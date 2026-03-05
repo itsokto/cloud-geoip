@@ -1,19 +1,33 @@
-package main
+package writer
 
 import (
 	"os"
-	"strings"
+	"path/filepath"
 
 	"github.com/sagernet/sing-box/common/srs"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 )
 
-func writePlain(path string, prefixes []string) error {
-	return os.WriteFile(path, []byte(strings.Join(prefixes, "\n")+"\n"), 0644)
-}
-
 const srsVersion = 2
+
+var _ Writer = (*SRSWriter)(nil)
+
+type SRSWriter struct{}
+
+func (w *SRSWriter) Write(baseDir string, entries []Entry) error {
+	dir, err := ensureDir(baseDir, "srs")
+	if err != nil {
+		return err
+	}
+
+	for _, e := range entries {
+		if err := writeSRS(filepath.Join(dir, e.Name+".srs"), e.Prefixes); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func writeSRS(path string, prefixes []string) error {
 	var headlessRule option.DefaultHeadlessRule

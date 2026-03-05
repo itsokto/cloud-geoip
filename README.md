@@ -16,6 +16,7 @@ Prebuilt files are published to the [`release`](../../tree/release) branch and u
 |--------|------|
 | Plain text | `plain/<name>.txt` |
 | [sing-box](https://sing-box.sagernet.org/) SRS | `srs/<name>.srs` |
+| [Xray-core](https://github.com/XTLS/Xray-core) dat | `cloud-geoip.dat` |
 
 ### sing-box usage
 
@@ -32,6 +33,26 @@ Prebuilt files are published to the [`release`](../../tree/release) branch and u
 }
 ```
 
+### Xray-core usage
+
+Place `cloud-geoip.dat` in the Xray asset directory (or set `XRAY_LOCATION_ASSET`), then reference it with the `ext:` prefix:
+
+```json
+{
+  "routing": {
+    "rules": [
+      {
+        "type": "field",
+        "outboundTag": "direct",
+        "ip": ["ext:cloud-geoip.dat:akamai"]
+      }
+    ]
+  }
+}
+```
+
+All entries are in a single file. The tag after the colon is the target name (e.g. `akamai`, `alibaba`, `cognosphere`).
+
 ## Local usage
 
 ```bash
@@ -39,7 +60,7 @@ Prebuilt files are published to the [`release`](../../tree/release) branch and u
 go run . -output out
 ```
 
-This generates `out/plain/*.txt` and `out/srs/*.srs`.
+This generates `out/plain/*.txt`, `out/srs/*.srs`, and `out/cloud-geoip.dat`.
 
 ## Flags
 

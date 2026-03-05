@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
+
+	"github.com/itsokto/cloud-geoip/writer"
 )
 
 var targets = []struct {
@@ -40,15 +41,7 @@ func main() {
 		extra = append(extra, "-A")
 	}
 
-	srsDir := filepath.Join(*outputDir, "srs")
-	plainDir := filepath.Join(*outputDir, "plain")
-	if err := os.MkdirAll(srsDir, 0755); err != nil {
-		log.Fatalf("create srs dir: %v", err)
-	}
-	if err := os.MkdirAll(plainDir, 0755); err != nil {
-		log.Fatalf("create plain dir: %v", err)
-	}
-
+	var entries []writer.Entry
 	for _, t := range targets {
 		fmt.Fprintf(os.Stderr, "\n=== %s (%s) ===\n", t.Name, strings.Join(t.ASNs, " "))
 
@@ -57,17 +50,19 @@ func main() {
 			log.Fatalf("%s: %v", t.Name, err)
 		}
 
-		plainPath := filepath.Join(plainDir, t.Name+".txt")
-		if err := writePlain(plainPath, prefixes); err != nil {
-			log.Fatalf("%s: write plain: %v", t.Name, err)
-		}
+		entries = append(entries, writer.Entry{Name: t.Name, Prefixes: prefixes})
+		fmt.Fprintf(os.Stderr, "  %d prefixes\n", len(prefixes))
+	}
 
-		srsPath := filepath.Join(srsDir, t.Name+".srs")
-		if err := writeSRS(srsPath, prefixes); err != nil {
-			log.Fatalf("%s: write srs: %v", t.Name, err)
-		}
+	writers := []writer.Writer{
+		&writer.PlainWriter{},
+		&writer.SRSWriter{},
+		&writer.DatWriter{},
+	}
 
-		fmt.Fprintf(os.Stderr, "  Wrote %s (%d prefixes)\n", plainPath, len(prefixes))
-		fmt.Fprintf(os.Stderr, "  Wrote %s\n", srsPath)
+	for _, w := range writers {
+		if err := w.Write(*outputDir, entries); err != nil {
+			log.Fatalf("write: %v", err)
+		}
 	}
 }
