@@ -35,7 +35,7 @@ jobs:
             ../release-old 2>/dev/null || true
 
           # compare all generated files against release branch
-          if diff -qr . ../release-old &>/dev/null 2>&1; then
+          if diff -qr . ../release-old --exclude='.git' &>/dev/null 2>&1; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
@@ -48,8 +48,21 @@ jobs:
           desc="Updated prefixes:"$'\n'
           for f in output/plain/*.txt; do
             name=$(basename "$f" .txt)
-            count=$(wc -l < "$f" | tr -d ' ')
-            desc+="- **${name}**: ${count} prefixes"$'\n'
+            old="release-old/plain/${name}.txt"
+            new_count=$(wc -l < "$f" | tr -d ' ')
+            if [ ! -f "$old" ]; then
+              desc+="- **${name}**: ${new_count} prefixes (new)"$'\n'
+            elif ! diff -q "$f" "$old" &>/dev/null; then
+              old_count=$(wc -l < "$old" | tr -d ' ')
+              diff=$((new_count - old_count))
+              if [ "$diff" -gt 0 ]; then
+                desc+="- **${name}**: ${old_count} -> ${new_count} (+${diff})"$'\n'
+              elif [ "$diff" -lt 0 ]; then
+                desc+="- **${name}**: ${old_count} -> ${new_count} (${diff})"$'\n'
+              else
+                desc+="- **${name}**: ${new_count} (changed)"$'\n'
+              fi
+            fi
           done
           {
             echo "body<<EOF"
