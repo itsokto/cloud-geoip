@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"flag"
-	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -14,9 +14,11 @@ var targets = []struct {
 	Name string
 	ASNs []string
 }{
-	{"akamai", []string{"AS-AKAMAI"}},
-	{"alibaba", []string{"AS37963", "AS45102", "AS24429"}},
-	{"cognosphere", []string{"AS135377"}},
+	{Name: "akamai", ASNs: []string{"AS-AKAMAI"}},
+	{Name: "alibaba", ASNs: []string{"AS37963", "AS45102", "AS24429", "AS134963", "AS203513"}},
+	{Name: "tencent", ASNs: []string{"AS45090", "AS132203", "AS133478", "AS137876"}},
+	{Name: "cognosphere", ASNs: []string{"AS203923"}},
+	{Name: "ucloud", ASNs: []string{"AS135377", "AS139327"}},
 }
 
 func main() {
@@ -24,34 +26,41 @@ func main() {
 	noV4 := flag.Bool("no-v4", false, "skip IPv4")
 	noV6 := flag.Bool("no-v6", false, "skip IPv6")
 	noAggregate := flag.Bool("no-aggregate", false, "disable prefix aggregation")
-	sources := flag.String("S", "", "IRR sources (passed to bgpq4 -S)")
-	host := flag.String("h", "", "IRR server (passed to bgpq4 -h)")
+	verbose := flag.Bool("v", false, "verbose logging")
 	flag.Parse()
 
-	log.SetFlags(0)
+	if *verbose {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	}
 
-	var extra []string
-	if *sources != "" {
-		extra = append(extra, "-S", *sources)
-	}
-	if *host != "" {
-		extra = append(extra, "-h", *host)
-	}
-	if !*noAggregate {
-		extra = append(extra, "-A")
-	}
+	irr := newIRR()
+	ripe := newRIPEStat()
 
 	var entries []writer.Entry
 	for _, t := range targets {
-		fmt.Fprintf(os.Stderr, "\n=== %s (%s) ===\n", t.Name, strings.Join(t.ASNs, " "))
+		slog.Info("target", "name", t.Name, "asns", strings.Join(t.ASNs, " "))
 
-		prefixes, err := queryPrefixes(t.ASNs, extra, *noV4, *noV6)
+		var prefixes []string
+		asns, err := irr.resolveASNs(t.ASNs)
+		if err == nil {
+			prefixes, err = ripe.announcedPrefixesFor(asns)
+		}
+		if err == nil && len(prefixes) == 0 {
+			err = errors.New("no announced prefixes")
+		}
+		if err == nil {
+			prefixes, err = filterPrefixes(prefixes, *noV4, *noV6)
+		}
+		if err == nil && !*noAggregate {
+			prefixes, err = aggregatePrefixes(prefixes)
+		}
 		if err != nil {
-			log.Fatalf("%s: %v", t.Name, err)
+			slog.Error("target failed", "name", t.Name, "err", err)
+			os.Exit(1)
 		}
 
 		entries = append(entries, writer.Entry{Name: t.Name, Prefixes: prefixes})
-		fmt.Fprintf(os.Stderr, "  %d prefixes\n", len(prefixes))
+		slog.Info("collected", "name", t.Name, "prefixes", len(prefixes))
 	}
 
 	writers := []writer.Writer{
@@ -62,7 +71,8 @@ func main() {
 
 	for _, w := range writers {
 		if err := w.Write(*outputDir, entries); err != nil {
-			log.Fatalf("write: %v", err)
+			slog.Error("write failed", "err", err)
+			os.Exit(1)
 		}
 	}
 }
